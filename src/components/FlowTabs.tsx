@@ -20,8 +20,8 @@ export function FlowTabs() {
     flows.find((flow) => flow.id === activeFlowId) ?? flows[0];
 
   return (
-    <section className="flow-card" aria-label="Deposit integration flows">
-      <div className="tabs" role="tablist" aria-label="Deposit integration flow">
+    <section className="flow-card" aria-label="Vault integration flows">
+      <div className="tabs" role="tablist" aria-label="Vault integration flow">
         {flows.map((flow) => (
           <button
             aria-controls={`${flow.id}-panel`}

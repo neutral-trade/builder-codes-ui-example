@@ -24,6 +24,7 @@ export interface PublicConfig {
   rpcUrl: string;
   vault: {
     address: string;
+    bundleProgramId?: string;
     depositToken: {
       decimals: number;
       symbol: string;
@@ -143,6 +144,7 @@ function readConfig(): PublicConfig {
     rpcUrl,
     vault: {
       address: vaultAddress,
+      bundleProgramId: vault.bundleProgramId,
       depositToken: {
         decimals: getSolanaTokenDecimals(vault.depositToken),
         symbol: vault.depositToken,

@@ -74,6 +74,19 @@ button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); o
 .flow-content h2 { max-width: 430px; margin: 0; font-size: clamp(1.75rem, 4vw, 2.65rem); letter-spacing: -.035em; }
 .flow-content > p:not(.eyebrow) { max-width: 560px; color: var(--muted); line-height: 1.65; }
 .flow-placeholder { display: grid; place-items: center; min-height: 148px; margin-top: 34px; border: 1px dashed #3a433c; border-radius: 12px; color: #6f7972; background: #101210; font-size: .82rem; }
+.widget-mount { overflow: hidden; margin-top: 34px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.widget-prompt { display: grid; place-items: center; min-height: 92px; margin: 34px 0 0 !important; border: 1px dashed #3a433c; border-radius: 12px; background: #101210; font-size: .82rem; text-align: center; }
+.widget-events { margin-top: 24px; border: 1px solid var(--border); border-radius: 12px; background: #101210; }
+.widget-events-heading { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.widget-events-heading h3 { margin: 0; font-size: .85rem; }
+.widget-events-heading span { color: var(--muted); font: .7rem monospace; }
+.widget-attribution-notice { margin: 14px 16px 0; padding: 12px; border: 1px solid #695c28; border-radius: 8px; color: #f0dd91; background: #211d0d; font-size: .8rem; line-height: 1.5; }
+.widget-events-empty { margin: 0; padding: 18px 16px; color: var(--muted); font-size: .8rem; }
+.widget-event-list { max-height: 360px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.widget-event { padding: 14px 16px; border-top: 1px solid var(--border); }
+.widget-event:first-child { border-top: 0; }
+.widget-event strong { color: var(--accent); font: .73rem monospace; }
+.widget-event pre { overflow: auto; margin: 8px 0 0; color: var(--muted); font: .7rem/1.5 monospace; white-space: pre-wrap; word-break: break-word; }
 
 .configuration-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
 .configuration-error { width: min(660px, 100%); padding: 34px; border: 1px solid #673d35; border-radius: 16px; background: #1a1210; }

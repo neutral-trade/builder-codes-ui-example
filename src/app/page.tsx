@@ -103,7 +103,7 @@ export default async function Home() {
             </section>
           </aside>
 
-          <FlowTabs />
+          <FlowTabs config={config} />
         </div>
       </main>
     </WalletProvider>

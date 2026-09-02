@@ -1,4 +1,5 @@
 import {
+  getBundleProgramId,
   getSolanaTokenDecimals,
   getVaultByAddress,
 } from "@neutral-trade/sdk";
@@ -24,6 +25,7 @@ export interface PublicConfig {
   rpcUrl: string;
   vault: {
     address: string;
+    bundleProgramId: string;
     depositToken: {
       decimals: number;
       symbol: string;
@@ -121,6 +123,13 @@ function readConfig(): PublicConfig {
       `Vault ${vaultAddress} is not in the Neutral registry for ${cluster}.`,
     );
   }
+  const bundleProgramId = getBundleProgramId(vault, cluster);
+  if (!bundleProgramId) {
+    throw new ConfigurationError(
+      `Vault ${vaultAddress} is not an ntbundle vault for ${cluster}.`,
+    );
+  }
+  validateAddress("Resolved ntbundle program ID", bundleProgramId);
 
   const rpcUrl = getRequiredValue(
     "NEXT_PUBLIC_RPC_URL",
@@ -143,6 +152,7 @@ function readConfig(): PublicConfig {
     rpcUrl,
     vault: {
       address: vaultAddress,
+      bundleProgramId,
       depositToken: {
         decimals: getSolanaTokenDecimals(vault.depositToken),
         symbol: vault.depositToken,

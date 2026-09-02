@@ -1,7 +1,12 @@
-"use client";
+type RefreshListener = () => void;
 
-export const POSITION_REFRESH_EVENT = "neutral-position-refresh";
+const listeners = new Set<RefreshListener>();
 
 export function refreshPosition(): void {
-  window.dispatchEvent(new Event(POSITION_REFRESH_EVENT));
+  for (const listener of listeners) listener();
+}
+
+export function onPositionRefresh(listener: RefreshListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }

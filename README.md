@@ -2,28 +2,32 @@
 
 ## Purpose
 
-This Next.js app demonstrates three ways to integrate a Neutral Trade vault into a partner interface while keeping wallet authority with the user. The REST flow requests an unsigned deposit or withdrawal transaction from Neutral's public builder, inspects the returned wire bytes, asks a Wallet Standard wallet to sign, submits through the configured RPC, and waits for confirmation.
+This Next.js reference app shows how a partner interface can integrate a Neutral Trade vault with a Wallet Standard wallet. The hosted widget and public REST deposit and withdrawal flows are implemented, while the SDK tab outlines the direct integration path. Live vault metrics, wallet balances, and pending requests come through a server-side API proxy.
 
 ## Major concepts
 
-- Public configuration selects a registry vault, cluster, browser-safe RPC, and exactly one builder address or code.
-- The registry entry resolves the vault's ntbundle program ID, including vaults pinned to a non-default program.
-- A first deposit requires attribution. If the API cannot apply it, the user must explicitly approve a second build without attribution.
-- Before a wallet prompt, the REST flow decodes the v0 transaction and verifies its signer, program allowlist, operation sequence, configured vault, and deposit amount or withdrawal shares.
-- Raw token amounts remain decimal strings or `bigint` values. No floating-point conversion is used.
-- The connected wallet is the only signer. The app signs the exact `transactionBase64` returned by the builder and does not reconstruct it from response metadata.
+- **Public configuration** selects a registry vault, Solana cluster, browser-safe RPC, and exactly one builder address or code.
+- **Registry resolution** provides the vault's ntbundle program ID, including vaults pinned to a non-default program.
+- **Hosted widget flow** mounts Neutral's deposit and withdrawal experience, displays the newest eight lifecycle events, and refreshes the position panel after confirmation.
+- **REST flow** requests unsigned transaction bytes from Neutral's public builder. A first deposit requires attribution, and the user must explicitly approve any second build without attribution.
+- **Transaction inspection** verifies the v0 transaction signer, program allowlist, operation sequence, configured vault, and decoded deposit amount or withdrawal shares before the wallet prompt.
+- **Server data proxy** adds `NEUTRAL_API_KEY` only for live vault and position requests. Browser transaction builds do not use the partner key.
+- Raw token amounts remain decimal strings or `bigint` values, and the connected wallet signs the exact `transactionBase64` returned by the builder.
 
 ## Setup
 
-Install dependencies with Node 20 or newer and pnpm:
+Install dependencies and create the local environment file:
 
 ```sh
 pnpm install
+cp .env.example .env.local
 ```
 
-Copy `.env.example` to `.env.local`. Set `NEXT_PUBLIC_RPC_URL` and exactly one of `NEXT_PUBLIC_BUILDER_ADDRESS` or `NEXT_PUBLIC_BUILDER_CODE`. The other public settings have documented defaults in `.env.example`.
+Set `NEXT_PUBLIC_RPC_URL`, `NEUTRAL_API_KEY`, and exactly one of `NEXT_PUBLIC_BUILDER_ADDRESS` or `NEXT_PUBLIC_BUILDER_CODE`. A configured builder address must be registered for the selected vault to receive attribution. Production partner keys are available from the [builder dashboard](https://www.neutral.trade/builder).
 
-Never place secrets or an API key in a `NEXT_PUBLIC_` variable. These values are included in browser JavaScript.
+`NEXT_PUBLIC_NEUTRAL_API_URL` optionally overrides the public transaction-builder API. `NEUTRAL_API_URL` independently overrides the server proxy's upstream API. See `.env.example` for cluster and vault defaults.
+
+Never place secrets in a `NEXT_PUBLIC_` variable. `NEUTRAL_API_KEY` is read only by the server-side proxy.
 
 ## Usage
 
@@ -33,7 +37,7 @@ Start the development server:
 pnpm dev
 ```
 
-Open the local URL shown by Next.js, connect a compatible Solana wallet, and choose an integration tab. In the REST tab, build and review a deposit or withdrawal before signing. A stale blockhash causes a fresh build that must be reviewed again.
+Open the local URL shown by Next.js and connect a compatible Solana wallet. Use the Widget tab for the hosted experience or the REST API tab to build, inspect, sign, submit, and confirm a deposit or withdrawal. A stale REST transaction blockhash causes a fresh build that must be reviewed again.
 
 ## Testing
 
@@ -46,4 +50,4 @@ pnpm lint
 pnpm build
 ```
 
-The test script uses `tsx` with Node's test runner so TypeScript tests work across the declared Node 20 and newer engine range. Inspection tests include a captured devnet deposit plus deterministic amount, vault, program, signer, and withdrawal-share tampering cases.
+The test command uses `tsx` with Node's test runner across both test directories. Coverage includes formatting, exact token amount parsing, transaction-builder requests and errors, a captured devnet deposit, and deterministic transaction tampering cases.

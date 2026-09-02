@@ -1,3 +1,127 @@
+export interface AsOf {
+  blockTime: number;
+  slot: number;
+}
+
+export interface ApiEnvelope<Data> {
+  asOf?: AsOf;
+  data: Data;
+  priceAsOf?: AsOf;
+  success: true;
+}
+
+export interface TimestampedApiEnvelope<Data> extends ApiEnvelope<Data> {
+  asOf: AsOf;
+}
+
+export interface TokenAmount {
+  raw: string;
+  token: string;
+}
+
+export interface TokenValue extends TokenAmount {
+  usd?: number | null;
+}
+
+export interface VaultAsset {
+  decimals: number;
+  mint: string;
+  symbol: string | null;
+}
+
+export interface VaultReferralTier {
+  mfeeBps: number;
+  pfeeBps: number;
+  threshold: string;
+}
+
+export interface VaultReferral {
+  enabled: boolean;
+  mfeeBps: number;
+  minDepositAmount: string;
+  pfeeBps: number;
+  tiers: Array<VaultReferralTier>;
+}
+
+export interface VaultData {
+  asset: VaultAsset;
+  bundleKey: string;
+  category: string | null;
+  depositFeeBps: number;
+  managementFeeBps: number;
+  maxCap: string;
+  minDepositAmount: string;
+  name: string | null;
+  oracleAgeSeconds: number;
+  paused: boolean;
+  performanceFeeBps: number;
+  processFrequency: "30min" | "hourly" | "daily" | null;
+  referral: VaultReferral | null;
+  withdrawalFeeBps: number;
+}
+
+export interface VaultMetricsData {
+  apy7d: number | null;
+  apy7dAfterFees: number | null;
+  apy30d: number | null;
+  apy30dAfterFees: number | null;
+  apyInception: number | null;
+  apyInceptionAfterFees: number | null;
+  computedAt: number;
+  maxDrawdown: number | null;
+  sharpeRatio30d: number | null;
+  tvl: {
+    asset: {
+      decimals: number;
+      mint: string;
+      symbol?: string;
+    };
+    value: TokenValue;
+  };
+}
+
+export interface VaultBalanceData {
+  asset: {
+    decimals: number;
+    mint: string;
+    symbol?: string;
+  };
+  netDeposits: TokenAmount;
+  shares: TokenAmount;
+  unpaidFeeEstimate: {
+    estimatedAt: number;
+    totalFeeShares: TokenAmount;
+    value: TokenValue;
+  };
+  value: TokenValue;
+}
+
+export interface PendingRequest {
+  amounts: {
+    estimatedValue?: string;
+    fee?: string;
+    gross?: string;
+    net?: string;
+    shares?: string;
+  };
+  cooldownEnd: number | null;
+  etaProcessAt: number | null;
+  requestedAt: number;
+  stage: "requested" | "netted" | "processed" | "refunded";
+}
+
+export interface PendingData {
+  deposits: Array<PendingRequest>;
+  user: string;
+  vaultId: string;
+  withdrawals: Array<PendingRequest>;
+}
+
+export type VaultResponse = TimestampedApiEnvelope<VaultData>;
+export type VaultMetricsResponse = TimestampedApiEnvelope<VaultMetricsData>;
+export type VaultBalanceResponse = TimestampedApiEnvelope<VaultBalanceData>;
+export type PendingResponse = TimestampedApiEnvelope<PendingData>;
+
 export type BuilderAttribution =
   | { kind: "address"; address: string }
   | { kind: "code"; code: string };
@@ -70,15 +194,6 @@ export interface WithdrawBuildData extends TransactionBuildData {
   sharesAmount?: string;
 }
 
-export interface ApiEnvelope<Data> {
-  asOf?: {
-    blockTime: number;
-    slot: number;
-  };
-  data: Data;
-  success: true;
-}
-
 export interface TransactionBuilderEndpoint {
   apiBaseUrl: string;
   vault: string;
@@ -102,6 +217,18 @@ type WithdrawBuildInput =
       userAddress: string;
       withdrawAll: true;
     };
+
+export class NeutralApiError extends Error {
+  readonly retryAfterSeconds: number | undefined;
+  readonly status: number;
+
+  constructor(status: number, retryAfter: string | null) {
+    super(`Neutral API request failed with status ${status}.`);
+    this.name = "NeutralApiError";
+    this.status = status;
+    this.retryAfterSeconds = parseRetryAfter(retryAfter);
+  }
+}
 
 export class TransactionBuilderApiError extends Error {
   readonly code?: string;
@@ -137,11 +264,8 @@ function serializeRawAmount(value: bigint | string): string {
   return rawAmount;
 }
 
-function parseRetryAfter(response: Response): number | undefined {
-  const value = response.headers.get("retry-after");
-  if (!value) {
-    return undefined;
-  }
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
 
   if (/^\d+$/.test(value)) {
     const seconds = Number(value);
@@ -162,7 +286,9 @@ async function readResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-async function readError(response: Response): Promise<TransactionBuilderApiError> {
+async function readTransactionBuildError(
+  response: Response,
+): Promise<TransactionBuilderApiError> {
   const body = await readResponseBody(response);
   const record = isRecord(body) ? body : undefined;
   const logs = Array.isArray(record?.logs)
@@ -179,13 +305,17 @@ async function readError(response: Response): Promise<TransactionBuilderApiError
     message:
       typeof record?.message === "string" ? record.message : fallbackMessage,
     ...(response.status === 429
-      ? { retryAfterSeconds: parseRetryAfter(response) }
+      ? {
+          retryAfterSeconds: parseRetryAfter(
+            response.headers.get("retry-after"),
+          ),
+        }
       : {}),
     status: response.status,
   });
 }
 
-function readEnvelope<Data>(
+function readTransactionBuildEnvelope<Data>(
   value: unknown,
   status: number,
 ): ApiEnvelope<Data> {
@@ -240,9 +370,12 @@ async function postTransactionBuild<Data>(
   );
 
   if (!response.ok) {
-    throw await readError(response);
+    throw await readTransactionBuildError(response);
   }
-  return readEnvelope<Data>(await readResponseBody(response), response.status);
+  return readTransactionBuildEnvelope<Data>(
+    await readResponseBody(response),
+    response.status,
+  );
 }
 
 export function buildDepositTx(
@@ -287,4 +420,63 @@ export function buildWithdrawTx(
     },
     signal,
   );
+}
+
+async function getNeutralApiData<Data>(
+  path: string,
+  options?: {
+    allowNotFound?: boolean;
+    noStore?: boolean;
+    signal?: AbortSignal;
+  },
+): Promise<ApiEnvelope<Data> | null> {
+  const response = await fetch(path, {
+    cache: options?.noStore ? "no-store" : "default",
+    headers: { Accept: "application/json" },
+    signal: options?.signal,
+  });
+
+  if (response.status === 404 && options?.allowNotFound) return null;
+  if (!response.ok) {
+    throw new NeutralApiError(
+      response.status,
+      response.headers.get("Retry-After"),
+    );
+  }
+  return (await response.json()) as ApiEnvelope<Data>;
+}
+
+export async function getVault(signal?: AbortSignal): Promise<VaultResponse> {
+  return (await getNeutralApiData<VaultData>("/api/neutral/vault", {
+    signal,
+  })) as VaultResponse;
+}
+
+export async function getVaultMetrics(
+  signal?: AbortSignal,
+): Promise<VaultMetricsResponse> {
+  return (await getNeutralApiData<VaultMetricsData>(
+    "/api/neutral/vault/metrics",
+    { signal },
+  )) as VaultMetricsResponse;
+}
+
+export async function getBalance(
+  address: string,
+  signal?: AbortSignal,
+): Promise<VaultBalanceResponse | null> {
+  return (await getNeutralApiData<VaultBalanceData>(
+    `/api/neutral/vault/user/${encodeURIComponent(address)}/balance`,
+    { allowNotFound: true, noStore: true, signal },
+  )) as VaultBalanceResponse | null;
+}
+
+export async function getPending(
+  address: string,
+  signal?: AbortSignal,
+): Promise<PendingResponse | null> {
+  return (await getNeutralApiData<PendingData>(
+    `/api/neutral/vault/user/${encodeURIComponent(address)}/pending`,
+    { allowNotFound: true, noStore: true, signal },
+  )) as PendingResponse | null;
 }

@@ -5,14 +5,15 @@ import {
 } from "@neutral-trade/sdk";
 import { address as parseAddress } from "@solana/kit";
 
+import {
+  ConfigurationError,
+  getConfiguredCluster,
+  getConfiguredVaultAddress,
+  getDefaultNeutralApiUrl,
+} from "@/lib/neutral-config";
 import type { SolanaCluster } from "@/lib/signer";
 
-const DEFAULT_CLUSTER = "mainnet";
-const DEFAULT_VAULT_ADDRESS = "J7qhMAKnB6G5dvoAN9281ufabajKbyGQxxd2bq6R7fPJ";
-const DEFAULT_API_URLS: Record<SolanaCluster, string> = {
-  devnet: "https://bundle-indexer-api-devnet-kvpc.onrender.com",
-  mainnet: "https://api.neutral.trade",
-};
+export { ConfigurationError } from "@/lib/neutral-config";
 
 export type Attribution =
   | { kind: "address"; address: string }
@@ -34,26 +35,9 @@ export interface PublicConfig {
   };
 }
 
-export class ConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConfigurationError";
-  }
-}
-
 function getOptionalValue(value: string | undefined): string | undefined {
   const trimmedValue = value?.trim();
   return trimmedValue ? trimmedValue : undefined;
-}
-
-function getCluster(value: string | undefined): SolanaCluster {
-  const cluster = getOptionalValue(value) ?? DEFAULT_CLUSTER;
-  if (cluster !== "mainnet" && cluster !== "devnet") {
-    throw new ConfigurationError(
-      `NEXT_PUBLIC_CLUSTER must be "mainnet" or "devnet"; received "${cluster}".`,
-    );
-  }
-  return cluster;
 }
 
 function getRequiredValue(name: string, value: string | undefined): string {
@@ -110,19 +94,14 @@ function getAttribution(
   );
 }
 
-function readConfig(): PublicConfig {
-  const cluster = getCluster(process.env.NEXT_PUBLIC_CLUSTER);
-  const vaultAddress =
-    getOptionalValue(process.env.NEXT_PUBLIC_VAULT_ADDRESS) ??
-    DEFAULT_VAULT_ADDRESS;
-  validateAddress("NEXT_PUBLIC_VAULT_ADDRESS", vaultAddress);
+export function readConfig(): PublicConfig {
+  const cluster = getConfiguredCluster();
+  const vaultAddress = getConfiguredVaultAddress(cluster);
 
   const vault = getVaultByAddress(vaultAddress, cluster);
-  if (!vault) {
-    throw new ConfigurationError(
-      `Vault ${vaultAddress} is not in the Neutral registry for ${cluster}.`,
-    );
-  }
+  // getConfiguredVaultAddress already verifies this registry lookup.
+  if (!vault) throw new ConfigurationError("Configured vault is unavailable.");
+
   const bundleProgramId = getBundleProgramId(vault, cluster);
   if (!bundleProgramId) {
     throw new ConfigurationError(
@@ -139,7 +118,7 @@ function readConfig(): PublicConfig {
 
   const neutralApiUrl =
     getOptionalValue(process.env.NEXT_PUBLIC_NEUTRAL_API_URL) ??
-    DEFAULT_API_URLS[cluster];
+    getDefaultNeutralApiUrl(cluster);
   validateUrl("NEXT_PUBLIC_NEUTRAL_API_URL", neutralApiUrl);
 
   return Object.freeze({

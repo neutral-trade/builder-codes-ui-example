@@ -1,7 +1,12 @@
-export const POSITION_REFRESH_EVENT = "neutral-trade:position-refresh";
+type RefreshListener = () => void;
 
-/** Notify the position panel that confirmed on-chain state should be fetched again. */
+const listeners = new Set<RefreshListener>();
+
 export function refreshPosition(): void {
-  window.dispatchEvent(new Event(POSITION_REFRESH_EVENT));
+  for (const listener of listeners) listener();
 }
 
+export function onPositionRefresh(listener: RefreshListener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}

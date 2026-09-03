@@ -18,7 +18,6 @@ import {
   fetchMaybeUserBundleAccount,
   fetchUserBundleBalance,
   findUserBundleAccountPda,
-  getDefaultBundleProgramIdByCluster,
 } from "@neutral-trade/sdk";
 import { address } from "@solana/kit";
 import { useMemo, useState } from "react";
@@ -26,10 +25,10 @@ import { useMemo, useState } from "react";
 import { config } from "@/config";
 import {
   AmountExceedsBalanceError,
-  AmountInputError,
   assertAmountWithinBalance,
-  formatTokenAmount,
-  parseTokenAmount,
+  formatRawAmount,
+  parsePositiveTokenAmount,
+  TokenAmountError,
 } from "@/lib/amount";
 import { getCreateAssociatedTokenIdempotentInstruction } from "@/lib/ata";
 import {
@@ -125,10 +124,8 @@ function getExplorerUrl(signature: string): string {
   return `https://explorer.solana.com/tx/${signature}${clusterQuery}`;
 }
 
-function getConfiguredProgramAddress(): Address | undefined {
-  return config.vault.bundleProgramId
-    ? address(config.vault.bundleProgramId)
-    : undefined;
+function getConfiguredProgramAddress(): Address {
+  return address(config.vault.bundleProgramId);
 }
 
 function getSimulationError(
@@ -145,11 +142,11 @@ function getDepositError(error: Error, allowFallback: boolean): DisplayedError {
   if (error instanceof TransactionSimulationError) {
     return getSimulationError(error);
   }
-  if (error instanceof AmountInputError) {
+  if (error instanceof TokenAmountError) {
     return { code: "INVALID_AMOUNT", message: error.message };
   }
   if (error instanceof BuilderDepositAmountTooLowError) {
-    const minimum = formatTokenAmount(
+    const minimum = formatRawAmount(
       error.requiredGrossDepositAmount,
       config.vault.depositToken.decimals,
     );
@@ -192,7 +189,7 @@ function getWithdrawError(error: Error): DisplayedError {
     return getSimulationError(error);
   }
   if (error instanceof AmountExceedsBalanceError) {
-    const availableBalance = formatTokenAmount(
+    const availableBalance = formatRawAmount(
       error.availableBalanceRaw,
       config.vault.depositToken.decimals,
     );
@@ -201,7 +198,7 @@ function getWithdrawError(error: Error): DisplayedError {
       message: `The requested amount exceeds the current withdrawable balance of ${availableBalance} ${config.vault.depositToken.symbol}. Choose Max or enter a smaller amount.`,
     };
   }
-  if (error instanceof AmountInputError) {
+  if (error instanceof TokenAmountError) {
     return { code: "INVALID_AMOUNT", message: error.message };
   }
 
@@ -241,7 +238,6 @@ async function buildAttributedDeposit(
 }> {
   const vault = address(config.vault.address);
   const programAddress = getConfiguredProgramAddress();
-  const programParams = programAddress ? { programAddress } : {};
 
   if (config.attribution.kind === "address") {
     const expectedReferrer = address(config.attribution.address);
@@ -250,7 +246,7 @@ async function buildAttributedDeposit(
       referrer: expectedReferrer,
       user: signer,
       vault,
-      ...programParams,
+      programAddress,
     });
     return { expectedReferrer, instructions };
   }
@@ -262,7 +258,7 @@ async function buildAttributedDeposit(
     resolveCode: () => expectedReferrer,
     user: signer,
     vault,
-    ...programParams,
+    programAddress,
   });
   return { expectedReferrer, instructions };
 }
@@ -276,7 +272,7 @@ async function buildUnattributedDeposit(
     amountRaw,
     bundleAccount: address(config.vault.address),
     user: signer,
-    ...(programAddress ? { programAddress } : {}),
+    programAddress,
   });
 }
 
@@ -285,7 +281,7 @@ async function fetchAttribution(user: Address): Promise<Address | undefined> {
   const programAddress = getConfiguredProgramAddress();
   const [userBundleAccount] = await findUserBundleAccountPda(
     { bundleAccount, userBundleAccountOwner: user },
-    programAddress ? { programAddress } : undefined,
+    { programAddress },
   );
   const account = await fetchMaybeUserBundleAccount(rpc, userBundleAccount);
   return account.exists ? account.data.referrer : undefined;
@@ -298,7 +294,7 @@ async function fetchWithdrawableBalance(
   const balance = await fetchUserBundleBalance(rpc, {
     bundleAccount: address(config.vault.address),
     user,
-    ...(programAddress ? { programAddress } : {}),
+    programAddress,
   });
   return balance?.balanceRaw;
 }
@@ -308,13 +304,10 @@ async function buildWithdrawal(
   amountRaw: bigint,
 ): Promise<Array<Instruction>> {
   const bundleAccountAddress = address(config.vault.address);
-  const configuredProgramAddress = getConfiguredProgramAddress();
+  const programAddress = getConfiguredProgramAddress();
   const bundleAccount = await fetchBundle(rpc, bundleAccountAddress);
-  const expectedProgramAddress =
-    configuredProgramAddress ??
-    address(getDefaultBundleProgramIdByCluster(config.cluster));
 
-  if (bundleAccount.programAddress !== expectedProgramAddress) {
+  if (bundleAccount.programAddress !== programAddress) {
     throw new Error("BUNDLE_ACCOUNT_PROGRAM_MISMATCH");
   }
 
@@ -329,9 +322,7 @@ async function buildWithdrawal(
         amountRaw,
         bundleAccount: bundleAccountAddress,
         user: signer,
-        ...(configuredProgramAddress
-          ? { programAddress: configuredProgramAddress }
-          : {}),
+        programAddress,
       }),
     ]);
 
@@ -502,7 +493,7 @@ export function SdkFlow() {
     );
 
     try {
-      const amountRaw = parseTokenAmount(
+      const amountRaw = parsePositiveTokenAmount(
         depositAmount,
         config.vault.depositToken.decimals,
       );
@@ -579,13 +570,13 @@ export function SdkFlow() {
     try {
       const amountRaw = await fetchWithdrawableBalance(signer.address);
       if (amountRaw === undefined || amountRaw <= 0n) {
-        throw new AmountInputError(
+        throw new TokenAmountError(
           "This wallet has no withdrawable balance in the configured vault.",
         );
       }
       setAvailableBalance({ amountRaw, owner: signer.address });
       setWithdrawAmount(
-        formatTokenAmount(amountRaw, config.vault.depositToken.decimals),
+        formatRawAmount(amountRaw, config.vault.depositToken.decimals),
       );
     } catch (thrownObject) {
       setDisplayedError(getWithdrawError(ensureError(thrownObject)));
@@ -611,7 +602,7 @@ export function SdkFlow() {
     setProgressMessage("Reading live balance and price-per-share state.");
 
     try {
-      const amountRaw = parseTokenAmount(
+      const amountRaw = parsePositiveTokenAmount(
         withdrawAmount,
         config.vault.depositToken.decimals,
       );
@@ -634,7 +625,7 @@ export function SdkFlow() {
         signer,
       });
       setTransactionResult({
-        action: `Withdrawal request for ${formatTokenAmount(amountRaw, config.vault.depositToken.decimals)} ${config.vault.depositToken.symbol}`,
+        action: `Withdrawal request for ${formatRawAmount(amountRaw, config.vault.depositToken.decimals)} ${config.vault.depositToken.symbol}`,
         signature,
       });
       setAvailableBalance(undefined);
@@ -672,7 +663,7 @@ export function SdkFlow() {
             <span className="status-pill">Attributed</span>
           </div>
 
-          <label className="amount-field">
+          <label className="sdk-amount-field">
             <span>Amount ({config.vault.depositToken.symbol})</span>
             <input
               autoComplete="off"
@@ -692,7 +683,7 @@ export function SdkFlow() {
             />
           </label>
 
-          <dl className="transaction-summary">
+          <dl className="sdk-transaction-summary">
             <div>
               <dt>Cluster</dt>
               <dd>{config.cluster}</dd>
@@ -735,7 +726,7 @@ export function SdkFlow() {
             <span className="status-pill">Keeper settled</span>
           </div>
 
-          <label className="amount-field">
+          <label className="sdk-amount-field">
             <span>Amount ({config.vault.depositToken.symbol})</span>
             <div className="amount-with-max">
               <input
@@ -760,13 +751,13 @@ export function SdkFlow() {
             </div>
           </label>
 
-          <dl className="transaction-summary">
+          <dl className="sdk-transaction-summary">
             <div>
               <dt>Available</dt>
               <dd>
                 {currentAvailableBalance === undefined
                   ? "Use Max to fetch"
-                  : `${formatTokenAmount(currentAvailableBalance, config.vault.depositToken.decimals)} ${config.vault.depositToken.symbol}`}
+                  : `${formatRawAmount(currentAvailableBalance, config.vault.depositToken.decimals)} ${config.vault.depositToken.symbol}`}
               </dd>
             </div>
             <div>

@@ -1,15 +1,15 @@
-import { assertValidAmountRaw } from "@neutral-trade/sdk";
-
+const MAX_AMOUNT_INPUT_LENGTH = 40;
 const MAX_TOKEN_DECIMALS = 18;
+const MAX_U64 = (1n << 64n) - 1n;
 
-export class AmountInputError extends Error {
+export class TokenAmountError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "AmountInputError";
+    this.name = "TokenAmountError";
   }
 }
 
-export class AmountExceedsBalanceError extends AmountInputError {
+export class AmountExceedsBalanceError extends TokenAmountError {
   readonly availableBalanceRaw: bigint;
 
   constructor(availableBalanceRaw: bigint) {
@@ -30,80 +30,96 @@ export function assertAmountWithinBalance(
 
 function assertDecimals(decimals: number): void {
   if (
-    !Number.isInteger(decimals) ||
+    !Number.isSafeInteger(decimals) ||
     decimals < 0 ||
     decimals > MAX_TOKEN_DECIMALS
   ) {
-    throw new AmountInputError("Token decimals must be an integer from 0 to 18.");
+    throw new TokenAmountError(
+      `Token decimals must be an integer from 0 to ${MAX_TOKEN_DECIMALS}.`,
+    );
   }
 }
 
+/** Convert a token-unit decimal string to raw units without a floating-point step. */
 export function parseTokenAmount(value: string, decimals: number): bigint {
   assertDecimals(decimals);
 
-  const trimmedValue = value.trim();
-  if (trimmedValue.length > 40) {
-    throw new AmountInputError("Amount is too long.");
+  const normalizedValue = value.trim();
+  if (normalizedValue.length > MAX_AMOUNT_INPUT_LENGTH) {
+    throw new TokenAmountError("Amount is too long.");
   }
-  const match = /^(\d+)(?:\.(\d+))?$/.exec(trimmedValue);
+  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(normalizedValue);
   if (!match) {
-    throw new AmountInputError(
-      "Enter a positive decimal amount without commas or exponent notation.",
+    throw new TokenAmountError(
+      "Enter a non-negative decimal amount without commas or exponent notation.",
     );
   }
 
   const wholePart = match[1];
-  const fractionPart = match[2] ?? "";
-  if (fractionPart.length > decimals) {
-    throw new AmountInputError(
-      `Enter no more than ${decimals} decimal places.`,
+  const fractionalPart = match[2] ?? "";
+  if (fractionalPart.length > decimals) {
+    throw new TokenAmountError(
+      `This asset supports at most ${decimals} decimal place${decimals === 1 ? "" : "s"}.`,
     );
   }
 
   const scale = 10n ** BigInt(decimals);
-  const paddedFraction = fractionPart.padEnd(decimals, "0");
-  const amountRaw = BigInt(wholePart) * scale + BigInt(paddedFraction || "0");
+  const paddedFractionalPart = fractionalPart.padEnd(decimals, "0");
+  const rawAmount =
+    BigInt(wholePart) * scale +
+    (paddedFractionalPart ? BigInt(paddedFractionalPart) : 0n);
 
-  try {
-    assertValidAmountRaw(amountRaw);
-  } catch {
-    throw new AmountInputError(
-      "Amount must be greater than zero and fit in an unsigned 64-bit integer.",
+  if (rawAmount > MAX_U64) {
+    throw new TokenAmountError(
+      "The amount exceeds the maximum supported raw value.",
     );
   }
 
+  return rawAmount;
+}
+
+export function parsePositiveTokenAmount(
+  value: string,
+  decimals: number,
+): bigint {
+  const amountRaw = parseTokenAmount(value, decimals);
+  if (amountRaw === 0n) {
+    throw new TokenAmountError("Amount must be greater than zero.");
+  }
   return amountRaw;
 }
 
-export function formatTokenAmount(
-  amountRaw: bigint,
+/** Render raw token units as an exact token-unit decimal string. */
+export function formatRawAmount(
+  value: bigint | string,
   decimals: number,
-  maxFractionDigits = decimals,
 ): string {
   assertDecimals(decimals);
-  if (!Number.isInteger(maxFractionDigits) || maxFractionDigits < 0) {
-    throw new AmountInputError(
-      "Maximum fraction digits must be a non-negative integer.",
+
+  const rawAmount =
+    typeof value === "bigint"
+      ? value
+      : /^(?:0|[1-9]\d*)$/.test(value)
+        ? BigInt(value)
+        : undefined;
+  if (rawAmount === undefined || rawAmount < 0n) {
+    throw new TokenAmountError(
+      "Raw amount must be a canonical unsigned integer.",
     );
   }
 
-  const sign = amountRaw < 0n ? "-" : "";
-  const absoluteAmount = amountRaw < 0n ? -amountRaw : amountRaw;
-  const scale = 10n ** BigInt(decimals);
-  const wholePart = absoluteAmount / scale;
-  const visibleFractionDigits = Math.min(decimals, maxFractionDigits);
-
-  if (visibleFractionDigits === 0) {
-    return `${sign}${wholePart}`;
+  if (decimals === 0) {
+    return rawAmount.toString();
   }
 
-  const fractionPart = (absoluteAmount % scale)
+  const scale = 10n ** BigInt(decimals);
+  const wholePart = rawAmount / scale;
+  const fractionalPart = (rawAmount % scale)
     .toString()
     .padStart(decimals, "0")
-    .slice(0, visibleFractionDigits)
     .replace(/0+$/, "");
 
-  return fractionPart
-    ? `${sign}${wholePart}.${fractionPart}`
-    : `${sign}${wholePart}`;
+  return fractionalPart
+    ? `${wholePart.toString()}.${fractionalPart}`
+    : wholePart.toString();
 }

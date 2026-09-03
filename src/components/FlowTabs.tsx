@@ -2,22 +2,32 @@
 
 import { useState } from "react";
 
+import type { PublicConfig } from "@/config";
 import { ApiFlow } from "@/components/flows/ApiFlow";
 import { SdkFlow } from "@/components/flows/SdkFlow";
 import { WidgetFlow } from "@/components/flows/WidgetFlow";
 
 const flows = [
-  { id: "widget", label: "Widget", Component: WidgetFlow },
-  { id: "api", label: "REST API", Component: ApiFlow },
-  { id: "sdk", label: "SDK", Component: SdkFlow },
+  { id: "widget", label: "Widget" },
+  { id: "api", label: "REST API" },
+  { id: "sdk", label: "SDK" },
 ] as const;
 
 type FlowId = (typeof flows)[number]["id"];
 
-export function FlowTabs() {
+export function FlowTabs({ config }: { config: PublicConfig }) {
   const [activeFlowId, setActiveFlowId] = useState<FlowId>("widget");
   const activeFlow =
     flows.find((flow) => flow.id === activeFlowId) ?? flows[0];
+
+  const activeComponent =
+    activeFlow.id === "api" ? (
+      <ApiFlow config={config} />
+    ) : activeFlow.id === "sdk" ? (
+      <SdkFlow />
+    ) : (
+      <WidgetFlow />
+    );
 
   return (
     <section className="flow-card" aria-label="Vault integration flows">
@@ -43,7 +53,7 @@ export function FlowTabs() {
         id={`${activeFlow.id}-panel`}
         role="tabpanel"
       >
-        <activeFlow.Component />
+        {activeComponent}
       </div>
     </section>
   );

@@ -1,50 +1,48 @@
-# Neutral builder integration example
+# Builder codes UI example
 
 ## Purpose
 
-This Next.js app shows three ways a partner can integrate deposits into a Neutral vault while sharing one Wallet Standard connection. The SDK tab also demonstrates direct withdrawal requests.
+This Next.js reference app shows how a partner interface can integrate a Neutral Trade vault with a Wallet Standard wallet. The hosted widget, public REST, and direct SDK deposit and withdrawal flows share one wallet connection. Live vault metrics, wallet balances, and pending requests come through a server-side API proxy.
 
 ## Major concepts
 
-The **Wallet signer adapter** keeps private keys inside the connected wallet and exposes the Solana Kit signer used by the direct SDK flow. The **RPC client** is a browser-side singleton created only from `NEXT_PUBLIC_RPC_URL`.
-
-The direct SDK flow reads current vault, oracle, user, and builder accounts from that RPC. It builds an attributed first deposit or an explicit unattributed deposit, simulates the unsigned transaction, opens the wallet only after simulation succeeds, sends the signed transaction, and polls until confirmed or expired. Direct attribution talks to the program and does not depend on an API attribution flag.
-
-Withdrawal requests prepend an idempotent create for the user's asset associated token account. The request enters the vault cooldown and keeper settlement cycle after confirmation.
+- **Public configuration** selects a registry vault, Solana cluster, browser-safe RPC, and exactly one builder address or code.
+- **Registry resolution** provides the vault's ntbundle program ID, including vaults pinned to a non-default program.
+- **Hosted widget flow** mounts Neutral's deposit and withdrawal experience, displays the newest eight lifecycle events, and refreshes the position panel after confirmation.
+- **REST flow** requests unsigned transaction bytes from Neutral's public builder. A first deposit requires attribution, and the user must explicitly approve any second build without attribution.
+- **Transaction inspection** verifies the v0 transaction signer, program allowlist, operation sequence, configured vault, and decoded deposit amount or withdrawal shares before the wallet prompt.
+- **Direct SDK flow** reads current vault, oracle, user, and builder accounts from the configured RPC. It builds attributed first deposits, exposes an explicit unattributed fallback, creates withdrawal destination token accounts, simulates before opening the wallet, and polls confirmation through blockhash expiry.
+- **Server data proxy** adds `NEUTRAL_API_KEY` only for live vault and position requests. Browser transaction builds do not use the partner key.
+- Raw token amounts remain decimal strings or `bigint` values, and every flow signs the exact transaction its integration path builds.
 
 ## Setup
 
-Install dependencies and copy the public configuration template:
+Install dependencies and create the local environment file:
 
 ```sh
 pnpm install
 cp .env.example .env.local
 ```
 
-Set a browser-safe RPC URL and exactly one of `NEXT_PUBLIC_BUILDER_ADDRESS` or `NEXT_PUBLIC_BUILDER_CODE`. Public devnet defaults for the ticket scenario are:
+Set `NEXT_PUBLIC_RPC_URL`, `NEUTRAL_API_KEY`, and exactly one of `NEXT_PUBLIC_BUILDER_ADDRESS` or `NEXT_PUBLIC_BUILDER_CODE`. A configured builder address must be registered for the selected vault to receive attribution. Production partner keys are available from the [builder dashboard](https://www.neutral.trade/builder).
 
-```dotenv
-NEXT_PUBLIC_CLUSTER=devnet
-NEXT_PUBLIC_VAULT_ADDRESS=8TqrZmyiWQ3F3WysiBaBQC1Nzj1LDn5AR7JjXBYzFxxQ
-NEXT_PUBLIC_BUILDER_ADDRESS=EpZtPfeiyT7avVCuKfucUCj4Kaj81sF87aeLKNPghGvh
-NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
-```
+`NEXT_PUBLIC_NEUTRAL_API_URL` optionally overrides the public transaction-builder API. `NEUTRAL_API_URL` independently overrides the server proxy's upstream API. See `.env.example` for cluster and vault defaults.
 
-`NEXT_PUBLIC_` values are bundled into browser JavaScript and must not contain secrets. A production integration should use a dedicated RPC that supports `getAccountInfo`, `getMultipleAccounts`, `simulateTransaction`, `sendTransaction`, signature status reads, and block-height reads.
+Never place secrets in a `NEXT_PUBLIC_` variable. `NEUTRAL_API_KEY` is read only by the server-side proxy. A production SDK integration should use a dedicated RPC that supports account reads, transaction simulation and submission, signature status reads, and block-height reads.
 
 ## Usage
 
-Start the app and connect a Wallet Standard wallet for the configured cluster:
+Start the development server:
 
 ```sh
 pnpm dev
 ```
 
-Enter a deposit amount in major units. Attribution failures that permit continuing expose a separate **Deposit without attribution** action; the app never falls back silently. For withdrawals, **Max** reads the current redeemable balance in exact minor units before filling the input.
+Open the local URL shown by Next.js and connect a compatible Solana wallet. Use the Widget tab for the hosted experience, the REST API tab to build and inspect server-generated transactions, or the SDK tab to build directly from live RPC state. A stale REST transaction blockhash causes a fresh build that must be reviewed again. The SDK flow never falls back from attributed to unattributed deposits silently, and its **Max** action reads the current redeemable balance before filling a withdrawal.
 
 ## Testing
 
-Run the focused unit tests, followed by the project checks:
+Run the unit tests, typecheck, lint, and production build:
 
 ```sh
 pnpm test
@@ -52,3 +50,5 @@ pnpm typecheck
 pnpm lint
 pnpm build
 ```
+
+The test command uses `tsx` with Node's test runner across both test directories. Coverage includes formatting, exact token amount parsing and balance bounds, associated token account instruction layout, structured RPC errors, transaction-builder requests and errors, a captured devnet deposit, and deterministic transaction tampering cases.

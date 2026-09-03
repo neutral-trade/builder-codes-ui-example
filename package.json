@@ -8,8 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts src/lib/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@neutral-trade/sdk": "1.0.9",

@@ -1,5 +1,7 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
 import { FlowTabs } from "@/components/FlowTabs";
+import { PositionCard } from "@/components/PositionCard";
+import { VaultCard } from "@/components/VaultCard";
 import { WalletProvider } from "@/lib/wallet";
 import type { PublicConfig } from "@/config";
 
@@ -71,39 +73,15 @@ export default async function Home() {
         </div>
 
         <div className="dashboard-grid">
-          <aside className="sidebar" aria-label="Vault overview">
-            <section className="info-card">
-              <div className="card-heading">
-                <span>Vault</span>
-                <span className="status-pill">Registry</span>
-              </div>
-              <h2>{config.vault.name}</h2>
-              <dl>
-                <div>
-                  <dt>Deposit token</dt>
-                  <dd>{config.vault.depositToken.symbol}</dd>
-                </div>
-                <div>
-                  <dt>Decimals</dt>
-                  <dd>{config.vault.depositToken.decimals}</dd>
-                </div>
-              </dl>
-              <p className="address-line" title={config.vault.address}>
-                {config.vault.address}
-              </p>
-            </section>
-
-            <section className="info-card muted-card">
-              <div className="card-heading">
-                <span>Your position</span>
-                <span className="status-pill">Wallet</span>
-              </div>
-              <h2>Connect to view</h2>
-              <p>Position balances and pending activity appear here.</p>
-            </section>
+          <aside className="sidebar" aria-label="Vault and position overview">
+            <VaultCard />
+            <PositionCard
+              assetDecimals={config.vault.depositToken.decimals}
+              assetSymbol={config.vault.depositToken.symbol}
+            />
           </aside>
 
-          <FlowTabs />
+          <FlowTabs config={config} />
         </div>
       </main>
     </WalletProvider>

@@ -8,6 +8,7 @@
       "esnext"
     ],
     "allowJs": false,
+    // The focused tests import TypeScript source files directly.
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "strict": true,

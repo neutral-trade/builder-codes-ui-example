@@ -30,8 +30,8 @@ export function FlowTabs({ config }: { config: PublicConfig }) {
     );
 
   return (
-    <section className="flow-card" aria-label="Deposit integration flows">
-      <div className="tabs" role="tablist" aria-label="Deposit integration flow">
+    <section className="flow-card" aria-label="Vault integration flows">
+      <div className="tabs" role="tablist" aria-label="Vault integration flow">
         {flows.map((flow) => (
           <button
             aria-controls={`${flow.id}-panel`}

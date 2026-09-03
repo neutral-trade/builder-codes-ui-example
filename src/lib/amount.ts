@@ -1,10 +1,30 @@
-const MAX_U64 = (1n << 64n) - 1n;
+const MAX_AMOUNT_INPUT_LENGTH = 40;
 const MAX_TOKEN_DECIMALS = 18;
+const MAX_U64 = (1n << 64n) - 1n;
 
 export class TokenAmountError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "TokenAmountError";
+  }
+}
+
+export class AmountExceedsBalanceError extends TokenAmountError {
+  readonly availableBalanceRaw: bigint;
+
+  constructor(availableBalanceRaw: bigint) {
+    super("Amount exceeds the current withdrawable balance.");
+    this.name = "AmountExceedsBalanceError";
+    this.availableBalanceRaw = availableBalanceRaw;
+  }
+}
+
+export function assertAmountWithinBalance(
+  amountRaw: bigint,
+  availableBalanceRaw: bigint,
+): void {
+  if (amountRaw > availableBalanceRaw) {
+    throw new AmountExceedsBalanceError(availableBalanceRaw);
   }
 }
 
@@ -25,6 +45,9 @@ export function parseTokenAmount(value: string, decimals: number): bigint {
   assertDecimals(decimals);
 
   const normalizedValue = value.trim();
+  if (normalizedValue.length > MAX_AMOUNT_INPUT_LENGTH) {
+    throw new TokenAmountError("Amount is too long.");
+  }
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(normalizedValue);
   if (!match) {
     throw new TokenAmountError(
@@ -47,10 +70,23 @@ export function parseTokenAmount(value: string, decimals: number): bigint {
     (paddedFractionalPart ? BigInt(paddedFractionalPart) : 0n);
 
   if (rawAmount > MAX_U64) {
-    throw new TokenAmountError("The amount exceeds the maximum supported raw value.");
+    throw new TokenAmountError(
+      "The amount exceeds the maximum supported raw value.",
+    );
   }
 
   return rawAmount;
+}
+
+export function parsePositiveTokenAmount(
+  value: string,
+  decimals: number,
+): bigint {
+  const amountRaw = parseTokenAmount(value, decimals);
+  if (amountRaw === 0n) {
+    throw new TokenAmountError("Amount must be greater than zero.");
+  }
+  return amountRaw;
 }
 
 /** Render raw token units as an exact token-unit decimal string. */
@@ -67,7 +103,9 @@ export function formatRawAmount(
         ? BigInt(value)
         : undefined;
   if (rawAmount === undefined || rawAmount < 0n) {
-    throw new TokenAmountError("Raw amount must be a canonical unsigned integer.");
+    throw new TokenAmountError(
+      "Raw amount must be a canonical unsigned integer.",
+    );
   }
 
   if (decimals === 0) {
@@ -85,4 +123,3 @@ export function formatRawAmount(
     ? `${wholePart.toString()}.${fractionalPart}`
     : wholePart.toString();
 }
-

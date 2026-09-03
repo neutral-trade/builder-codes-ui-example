@@ -18,7 +18,7 @@ import type {
 import { createRpcTransactionTransport } from "@neutral-trade/widget-sdk";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { formatRawAmount, parseTokenAmount } from "@/lib/amount";
+import { formatRawAmount, parsePositiveTokenAmount } from "@/lib/amount";
 import {
   buildDepositTx,
   buildWithdrawTx,
@@ -165,11 +165,7 @@ function getConsentCopy(
 }
 
 function readPositiveAmount(value: string, decimals: number): string {
-  const amountRaw = parseTokenAmount(value, decimals);
-  if (amountRaw === 0n) {
-    throw new Error("Amount must be greater than zero.");
-  }
-  return amountRaw.toString();
+  return parsePositiveTokenAmount(value, decimals).toString();
 }
 
 function assertAcceptedBuild(
